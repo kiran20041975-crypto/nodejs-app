@@ -3,7 +3,8 @@ pipeline {
   agent any
 
   environment {
-    DOCKERHUB_REPO = 'kiran1975/nodejs-app'
+    AWS_REGION = 'ap-south-1'
+    ECR_REPO = '782296988341.dkr.ecr.ap-south-1.amazonaws.com/nodejs-app'
     IMAGE_TAG = "${BUILD_NUMBER}"
   }
 
@@ -11,11 +12,11 @@ pipeline {
 
     stage('Checkout') {
       steps {
-        git branch: 'main', url: 'https://github.com/kiran20041975-crypto/nodejs-app.git'
+        git branch: 'main', url: 'https://github.com/YOUR_USERNAME/nodejs-app.git'
       }
     }
 
-    stage('Install and Test') {
+    stage('Install & Test') {
       steps {
         sh 'npm install'
         sh 'npm test'
@@ -24,43 +25,44 @@ pipeline {
 
     stage('Docker Build') {
       steps {
-        sh "docker build -t ${DOCKERHUB_REPO}:${IMAGE_TAG} ."
-        sh "docker tag ${DOCKERHUB_REPO}:${IMAGE_TAG} ${DOCKERHUB_REPO}:latest"
+        sh "docker build -t nodejs-app:${IMAGE_TAG} ."
       }
     }
 
-    stage('Push to Docker Hub') {
+    stage('Push to ECR') {
       steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'dockerhub-creds',
-          usernameVariable: 'DOCKER_USER',
-          passwordVariable: 'DOCKER_PASS'
-        )]) {
-          sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-          sh "docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}"
-          sh "docker push ${DOCKERHUB_REPO}:latest"
-        }
+        sh """
+          aws ecr get-login-password --region ${AWS_REGION} | \
+          docker login --username AWS --password-stdin \
+          782296988341.dkr.ecr.ap-south-1.amazonaws.com
+
+          docker tag nodejs-app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+          docker tag nodejs-app:${IMAGE_TAG} ${ECR_REPO}:latest
+          docker push ${ECR_REPO}:${IMAGE_TAG}
+          docker push ${ECR_REPO}:latest
+        """
       }
     }
 
-    stage('Deploy to Kubernetes') {
+    stage('Deploy to EKS') {
       steps {
-        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-          sh "kubectl apply -f k8s/deployment.yaml --validate=false"
-          sh "kubectl apply -f k8s/service.yaml --validate=false"
-          sh "kubectl set image deployment/nodejs-app nodejs-app=${DOCKERHUB_REPO}:${IMAGE_TAG}"
-          sh "kubectl rollout status deployment/nodejs-app"
-        }
+        sh """
+          aws eks update-kubeconfig --name nodejs-cluster --region ${AWS_REGION}
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl set image deployment/nodejs-app nodejs-app=${ECR_REPO}:${IMAGE_TAG}
+          kubectl rollout status deployment/nodejs-app
+        """
       }
     }
 
     stage('Canary Deploy') {
       steps {
-        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-          sh "docker tag ${DOCKERHUB_REPO}:${IMAGE_TAG} ${DOCKERHUB_REPO}:canary"
-          sh "docker push ${DOCKERHUB_REPO}:canary"
-          sh "kubectl apply -f k8s/canary-deployment.yaml --validate=false"
-        }
+        sh """
+          docker tag nodejs-app:${IMAGE_TAG} ${ECR_REPO}:canary
+          docker push ${ECR_REPO}:canary
+          kubectl apply -f k8s/canary-deployment.yaml
+        """
       }
     }
 
@@ -75,4 +77,4 @@ pipeline {
     }
   }
 }
-ENDOFFILE
+EOF
