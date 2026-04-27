@@ -19,7 +19,6 @@ spec:
     spec:
       containers:
       - name: nodejs-app
-        image: nodejs-app:latest
-        imagePullPolicy: Never
+        image: kiran1975/nodejs-app:latest
         ports:
         - containerPort: 3000
