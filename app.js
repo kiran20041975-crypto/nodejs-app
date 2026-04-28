@@ -1,41 +1,23 @@
 const express = require('express');
-const client = require('prom-client');
+const promClient = require('prom-client');
+
 const app = express();
 
-// EJS setup
-app.set('view engine', 'ejs');
-app.set('views', './views');
+// ✅ Collect default metrics (CPU, memory, etc.)
+const collectDefaultMetrics = promClient.collectDefaultMetrics;
+collectDefaultMetrics();
 
-// Prometheus setup
-const register = new client.Registry();
-client.collectDefaultMetrics({ register });
-
-const httpRequests = new client.Counter({
-  name: 'http_requests_total',
-  help: 'Total number of requests',
-});
-
-let requestCount = 0;
-
-// Routes
-app.get('/', (req, res) => {
-  httpRequests.inc();
-  requestCount++;
-  res.render('index', {
-    version: '1.0',
-    requests: requestCount
-  });
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy' });
-});
-
+// ✅ Expose /metrics endpoint for Prometheus
 app.get('/metrics', async (req, res) => {
-  res.set('Content-Type', register.contentType);
-  res.end(await register.metrics());
+  res.set('Content-Type', promClient.register.contentType);
+  res.end(await promClient.register.metrics());
 });
 
-app.listen(3000, () => {
-  console.log('App running on port 3000');
+// Your existing routes below...
+app.get('/', (req, res) => {
+  res.send('Hello from Node.js!');
+});
+
+app.listen(5000, () => {
+  console.log('Server running on port 5000');
 });
